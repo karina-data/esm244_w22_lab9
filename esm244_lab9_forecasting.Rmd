@@ -8,10 +8,12 @@ output: html_document
 ```{r setup, include=TRUE, message = FALSE, warning = FALSE}
 knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
 
+# attach packages
 library(tidyverse)
 library(here)
 library(broom)
 
+# for time series data
 library(tsibble)
 library(feasts)
 library(fable)
@@ -25,6 +27,138 @@ Read in the data and convert it to a time series
 ```{r}
 
 energy <- read_csv(here("data", "energy.csv"))
+
+energy_ts <- energy %>% 
+  mutate(date = tsibble::yearmonth(month)) %>% 
+  as_tsibble(key = NULL, index = date) # change it to a tsibble df
+
+```
+
+### Exploratory plotting
+
+```{r}
+# look at the raw data
+
+ggplot(energy_ts, aes(x = date, y = res_total)) +
+  geom_line() +
+  theme_classic() +
+  labs(y = "Residential Energy Consumption \n (Trillion BTU)", 
+       x = "Date")
+
+```
+
+#### Season plots
+
+```{r}
+# gg_season from feasts - it knows x will come from time series column
+
+energy_ts %>% 
+  gg_season(y = res_total) +
+  theme_minimal() +
+  scale_color_viridis_c() +
+  labs(x = "Month", y = "Residential Energy Consuption (Trillion BTU)")
+
+
+```
+
+
+```{r}
+# separate plot for each month
+
+energy_ts %>% 
+  gg_subseries() + theme_classic()
+
+```
+
+#### Decomposition
+
+```{r}
+# decomposition 
+# STL = seasonality trend and loess (non-linear relationships)
+
+dcmp <- energy_ts %>% 
+  model(STL(res_total ~ season())) # this is the actual decomposition code - residential total as a function of season
+
+# autoplot is ggplot all purpose tool
+components(dcmp) %>% 
+  autoplot() + # becomes ggplot object here
+  theme_bw()
+
+
+```
+
+
+### Autocorrelation function
+
+```{r}
+
+energy_ts %>% 
+  ACF(res_total, lag_max = 48) %>% # changes the x-axis lag length
+  autoplot() +
+  theme_bw()
+
+```
+
+
+### Forecasting
+
+```{r}
+# create a different kind of model
+# ets model is similar to Holt-Winters - expontential weighted average across all time periods
+# need to tell it what kind of season (A = additive, M = multiplicative)
+
+energy_fit <- energy_ts %>% 
+  model(ets = ETS(res_total ~ season("M")))
+
+# apply the forecasting model
+energy_forecast <- energy_fit %>% 
+  forecast(h = "10 years")
+
+# pass it into an autoplot
+energy_forecast %>% 
+  autoplot() +
+  theme_bw()
+
+energy_forecast %>% 
+  autoplot(energy_ts) +
+  theme_bw()
+
+
+```
+
+
+
+```{r}
+# use the broom augment function - energy_fit was created using real data, so use that as the backbone
+
+energy_predicted <- broom::augment(energy_fit)
+
+```
+
+plot the predicted data
+
+```{r, fig.width = 8, fig.height=3}
+ggplot(energy_predicted) +
+  geom_line(aes(x = date, y = res_total)) +
+  geom_line(aes(x = date, y = .fitted), color = "red", alpha = 0.7) +
+  theme_classic()
+
+```
+
+look at the residuals - error is centered around 0, so pretty reasonable - looks normally distributed
+
+```{r}
+
+ggplot(data = energy_predicted, aes(x = .resid)) +
+  geom_histogram() +
+  theme_classic()
+
+```
+
+
+```{r}
+
+
 
 ```
 
