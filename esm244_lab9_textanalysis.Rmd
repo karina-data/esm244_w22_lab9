@@ -1,0 +1,119 @@
+---
+title: "ESM 244 - Lab 9 - Part 2"
+subtitle: "Intro to Text Analysis"
+author: "Karina Johnston"
+date: "3/3/2022"
+output: html_document
+---
+
+```{r setup, include=TRUE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+
+```
+
+
+start with just a vector of characters
+
+```{r}
+
+vec <- c("  A Unicorn    Fish", "   add      cornmeal ", " French FRIES", "  acorn squash")
+
+# stringr package starts w/str
+
+# for str-detect - give it a vector (or column in a data frame), then says 'do I detect this that you are giving it inside the vector
+
+str_detect(vec, pattern = "corn")
+# [1]  TRUE  TRUE FALSE  TRUE (found it in first two and last one)
+
+str_detect(vec, pattern = "fish")
+# [1] FALSE FALSE FALSE FALSE (doesn't find it bc caps)
+
+# [a-z] = code for pattern that finds anything w/in those letters
+str_extract(vec, pattern = "[a-z]")
+
+```
+
+```{r}
+# + = look for this pattern 1 or more times, or start or zero
+str_extract(vec, pattern = "[a-z]+")
+
+```
+
+```{r}
+# give me all the instances of this pattern - pulls everything that's not a space
+
+str_extract_all(vec, pattern = "[a-zA-Z]+")
+
+```
+
+now lets do it with a dataframe - `starwars`
+
+```{r}
+
+walk_subset <- starwars %>% 
+  filter(str_detect(name, pattern = "walk")) # use the vector of names to see what's matching
+
+```
+
+
+```{r}
+# use str_replace to fix typos or shift to the way it appears in a column
+
+str_replace(vec, pattern = "corn", replacement = "COOOLLL") # replaces it with a new pattern
+
+```
+
+```{r}
+# to replace all
+str_replace_all(vec, pattern = "a", replacement = "ZZZZZZZ")
+
+```
+
+```{r}
+# can also do with dataframes
+sw_tornado <- starwars %>% 
+  mutate(name = str_replace(name, pattern = "Sky", replacement = "TORNADO"))
+
+```
+
+remove white space
+
+```{r}
+# to get rid of extra spaces
+
+str_trim(vec)
+str_squish(vec)
+
+```
+
+#### change cases
+
+to fix capitalization!!!  big issue with text data
+
+```{r}
+# get rid of caps
+
+str_to_lower(vec) %>% 
+  str_squish()
+
+str_to_title(vec) %>% 
+  str_squish()
+
+tolower(vec) # same in base R as the stringr package (in the tidyverse)
+
+```
+
+
+```{r}
+# create a new combo dataframe and switch words around
+
+sw_combo <- starwars %>% 
+  mutate(name = str_to_lower(name)) %>% # first change everything to lower
+  filter(str_detect(name, pattern = "darth")) %>%   # now look for darth
+  mutate(name = str_replace(name, patter = "darth", replacement = "llama"))
+
+```
+
+
