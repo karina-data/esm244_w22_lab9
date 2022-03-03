@@ -155,14 +155,6 @@ ggplot(data = energy_predicted, aes(x = .resid)) +
 
 ```
 
-
-```{r}
-
-
-
-```
-
-
-
-
+all of the forecasting above is similar to Holt-Winters
+can also do "naive" and other types from lecture
 
