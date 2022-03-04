@@ -1,0 +1,251 @@
+---
+title: "ESM 244 - Lab 9 Part 3"
+subtitle: "Sentiment Analysis - text"
+author: "Karina Johnston"
+date: "3/3/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE, warning = FALSE, message = FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+
+# attach packages
+library(tidyverse) # includes the stringr package
+library(tidytext)
+library(textdata)
+library(pdftools)
+library(ggwordcloud)
+
+```
+
+### Get the Hobbit
+
+```{r}
+# read in the pdf
+# cant use it on impages - needs to be a selectable pdf text - newer pdfs, not scans
+# not great with tables
+
+# create the vector
+hobbit_text <- pdf_text(here::here("data", "the-hobbit.pdf"))
+
+```
+
+
+```{r}
+# get the vector for a single page
+
+hobbit_p34 <- hobbit_text[34]
+
+```
+
+tidy up the data
+
+#### break it down into pages and lines
+
+```{r}
+# creates a single character string for each page (each row is a page)
+
+hobbit_lines <- data.frame(hobbit_text) %>% 
+  mutate(page = 1:n()) %>% # adds a column with the page numbers
+  # split the lines - second backslash means that its a real backslash
+  mutate(full_text = str_split(hobbit_text, pattern = "\\n")) %>% 
+  # now each line is on its own row
+  unnest(full_text) %>% 
+  mutate(full_text = str_squish(full_text)) # cleans up the dataframe re: spaces
+
+```
+
+do some tidying
+
+```{r}
+
+hobbit_chapters <- hobbit_lines %>% 
+  slice(-(1:137)) %>% # note chapter 1 starts on line 138, so slice out the first intro junk
+  mutate(chapter = ifelse(str_detect(full_text, "Chapter"),
+                          full_text, NA)) %>% 
+  # fill down!!!!  fills any NAs below it!
+  fill(chapter, .direction = "down") %>% 
+  separate(col = chapter, into = c("ch", "no"), sep = " ") %>% 
+  mutate(chapter = as.numeric(as.roman(no)))
+  
+```
+
+
+### Get some word counts by chapter
+
+```{r}
+# tokenize the text (Tolkein-ize!!!  hahahaha)
+# unnest is in the tidytext package
+
+hobbit_words <- hobbit_chapters %>% 
+  # drops all the punctuation and turns everything lowercase
+  unnest_tokens(word, full_text, token = "words") %>% 
+  select(-hobbit_text) # takeaway the hobbit full text column
+
+```
+
+
+```{r}
+# concept called "stopwords" which are like prepositions and related words (e.g., and, the, of) which are always the most common
+
+hobbit_wordcount <- hobbit_words %>% 
+  count(chapter, word)
+
+
+```
+
+
+```{r}
+head(stop_words)
+x <- stop_words
+
+# use anti-join - remove anything that matches
+hobbit_words_clean <- hobbit_words %>% 
+  anti_join(stop_words, by = "word")
+
+nonstop_counts <- hobbit_words_clean %>% 
+  count(chapter, word)
+
+```
+
+### Find the top 5 words for each ch
+
+```{r}
+
+top_5_words <- nonstop_counts %>% 
+  group_by(chapter) %>% 
+  arrange(-n) %>% 
+  slice(1:5) %>% 
+  ungroup()
+
+```
+
+
+```{r}
+
+ggplot(data = top_5_words) +
+  geom_col(aes(x = n, y = word), fill = "darkblue") +
+  facet_wrap(~chapter, scales = "free") +
+  theme_classic()
+
+```
+
+
+### Word Cloud for Ch 1
+
+```{r}
+
+# ch 1 find the top 100 words
+
+ch1_top100 <- nonstop_counts %>% 
+  filter(chapter == 1) %>% 
+  arrange(-n) %>% 
+  slice(1:100)
+
+```
+
+
+```{r}
+
+ch1_cloud <- ggplot(data = ch1_top100, aes(label = word)) +
+  geom_text_wordcloud(aes(color = n, size = n), shape = "diamond") +
+  scale_size_area(max_size = 6) +
+  scale_color_gradientn(colors = c("darkgreen", "blue", "purple")) # gives gradient and it will try to make smooth transition between
+# change the color and size based on n
+
+ch1_cloud
+
+```
+
+### Sentiment Analysis
+
+each word in the text has an emotional weight to it (either a positive or negative association)
+
+three lexicons (common) that are built into the `tidytext` package
+group into 'fear' 'sadness' 'joy' etc. - binned data
+
+afinn ranks from -5 to +5 category of postiive to neg
+
+```{r}
+# take a look at some of the lexicons
+
+get_sentiments(lexicon = "afinn")
+
+afinn_pos <- get_sentiments("afinn") %>% 
+  filter(value %in% c(3, 4, 5))
+
+```
+
+bing is binary positive/negative
+
+```{r}
+get_sentiments("bing")
+
+```
+
+look at NRC one (binned)
+
+```{r}
+get_sentiments("nrc")
+
+```
+
+
+```{r}
+# won't include words like "bilbo" that the lexicon doesn't have a pos/neg value for
+
+hobbit_afinn <- hobbit_words_clean %>% 
+  inner_join(get_sentiments("afinn"), by = "word")
+
+```
+
+
+```{r}
+# how many times does each value of word show up
+afinn_counts <- hobbit_afinn %>% 
+  count(chapter, value)
+
+ggplot(data = afinn_counts, aes(x = value, y = n)) +
+  geom_col() +
+  facet_wrap(~chapter) +
+  theme_classic()
+
+```
+
+more common might be to find the mean value
+
+```{r}
+
+afinn_means <- hobbit_afinn %>% 
+  group_by(chapter) %>% 
+  summarize(mean_afinn = mean(value))
+
+ggplot(data = afinn_means, aes(x = fct_rev(factor(chapter)), y = mean_afinn)) +
+  geom_col() +
+  theme_classic() + 
+  coord_flip()
+
+```
+
+### lets eval with the NRC lexicon
+
+remember afinn is pos/neg to degree
+nrc has bins of categories (e.g., fear)
+
+```{r}
+
+hobbit_nrc <- hobbit_words_clean %>% 
+  inner_join(get_sentiments("nrc"))
+
+hobbit_nrc_counts <- hobbit_nrc %>% 
+  count(chapter, sentiment)
+
+ggplot(data = hobbit_nrc_counts, aes(x = chapter, y = n)) +
+  geom_col() +
+  theme_classic() + 
+  facet_wrap(~sentiment) +
+  coord_flip()
+
+```
+
+
